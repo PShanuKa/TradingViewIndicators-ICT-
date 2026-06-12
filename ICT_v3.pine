@@ -1,0 +1,1038 @@
+// =============================================================================
+// ICT CONCEPTS INDICATOR - Pine Script v5
+// Features: OB, FVG, MSS/BOS, Liquidity Zones, Premium/Discount,
+//           Killzones, Breaker Blocks, Inducement, HTF Confluence,
+//           Entry Signals, Historical Signal Markers, Win Rate Dashboard
+// Version: 3.0 - Entry Signal + Win Rate System Added
+// =============================================================================
+
+//@version=5
+indicator("ICT Concepts v3 [Entry + WinRate]", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+
+// =============================================================================
+// INPUTS
+// =============================================================================
+
+// Order Blocks
+grpOB        = "Order Blocks"
+showOB       = input.bool(true,  "Show Order Blocks",             group=grpOB)
+obLookback   = input.int(10,     "OB Lookback (bars)", minval=3,  group=grpOB)
+colorBullOB  = input.color(color.new(#00bcd4, 75), "Bullish OB", group=grpOB)
+colorBearOB  = input.color(color.new(#ff5722, 75), "Bearish OB", group=grpOB)
+obBorderBull = input.color(color.new(#00bcd4, 20), "Bull Border", group=grpOB)
+obBorderBear = input.color(color.new(#ff5722, 20), "Bear Border", group=grpOB)
+
+// Fair Value Gaps
+grpFVG       = "Fair Value Gaps"
+showFVG      = input.bool(true,  "Show FVGs",                     group=grpFVG)
+extendFVG    = input.bool(true,  "Extend Until Filled",           group=grpFVG)
+colorBullFVG = input.color(color.new(#4caf50, 80), "Bullish FVG", group=grpFVG)
+colorBearFVG = input.color(color.new(#f44336, 80), "Bearish FVG", group=grpFVG)
+fvgBordBull  = input.color(color.new(#4caf50, 30), "Bull Border", group=grpFVG)
+fvgBordBear  = input.color(color.new(#f44336, 30), "Bear Border", group=grpFVG)
+
+// Market Structure
+grpMSS       = "Market Structure BOS MSS"
+showMSS      = input.bool(true,  "Show BOS / MSS",                group=grpMSS)
+swingLen     = input.int(10,     "Swing Length",  minval=2,       group=grpMSS)
+colorBOS     = input.color(color.new(#2196f3, 0), "BOS Color",    group=grpMSS)
+colorMSS_in  = input.color(color.new(#ff9800, 0), "MSS Color",    group=grpMSS)
+showBOSLine  = input.bool(true,  "Show Dashed Line",              group=grpMSS)
+
+// Liquidity Zones
+grpLIQ       = "Liquidity Zones EQH EQL"
+showLIQ      = input.bool(true,  "Show Liquidity Zones",          group=grpLIQ)
+liqLen       = input.int(10,     "Pivot Length",      minval=3,   group=grpLIQ)
+liqThresh    = input.float(0.05, "Equal Level Threshold %", minval=0.01, step=0.01, group=grpLIQ)
+colorEQH     = input.color(color.new(#e91e63, 60), "EQH Color",   group=grpLIQ)
+colorEQL     = input.color(color.new(#9c27b0, 60), "EQL Color",   group=grpLIQ)
+
+// Premium and Discount
+grpPD        = "Premium and Discount Zones"
+showPD       = input.bool(true,  "Show Premium/Discount",         group=grpPD)
+pdLen        = input.int(50,     "Range Lookback", minval=10,     group=grpPD)
+colorPremium = input.color(color.new(#f44336, 90), "Premium Zone", group=grpPD)
+colorDisc    = input.color(color.new(#4caf50, 90), "Discount Zone",group=grpPD)
+colorEquilib = input.color(color.new(#ffeb3b, 0),  "Equilibrium Line", group=grpPD)
+
+// Killzones
+grpKZ        = "Killzones Session Highlights"
+showKZ       = input.bool(true,  "Show Killzones",                group=grpKZ)
+colorAsian   = input.color(color.new(#607d8b, 88), "Asian Session",  group=grpKZ)
+colorLondon  = input.color(color.new(#3f51b5, 88), "London Open",    group=grpKZ)
+colorNY      = input.color(color.new(#009688, 88), "New York Open",  group=grpKZ)
+
+// Breaker Blocks
+grpBB        = "Breaker Blocks"
+showBB       = input.bool(true,  "Show Breaker Blocks",           group=grpBB)
+colorBullBB  = input.color(color.new(#00e676, 70), "Bullish BB",  group=grpBB)
+colorBearBB  = input.color(color.new(#ff1744, 70), "Bearish BB",  group=grpBB)
+
+// Inducement
+grpIDM       = "Inducement IDM"
+showIDM      = input.bool(true,  "Show Inducement Levels",        group=grpIDM)
+idmLen       = input.int(5,      "IDM Pivot Length", minval=2,    group=grpIDM)
+colorIDM     = input.color(color.new(#ff9800, 0), "IDM Color",    group=grpIDM)
+
+// HTF Confluence
+grpHTF       = "HTF Confluence"
+showHTF      = input.bool(false, "Show HTF OB/FVG",               group=grpHTF)
+htfTF        = input.timeframe("60", "Higher Timeframe",          group=grpHTF)
+colorHTFBull = input.color(color.new(#00bcd4, 88), "HTF Bull Zone",group=grpHTF)
+colorHTFBear = input.color(color.new(#ff5722, 88), "HTF Bear Zone",group=grpHTF)
+
+// Entry Signal Settings
+grpSIG       = "Entry Signals"
+showSignals  = input.bool(true,  "Show Entry Signals",            group=grpSIG)
+minConditions= input.int(4,      "Min Conditions to Fire (4-6)", minval=3, maxval=6, group=grpSIG)
+rrRatio      = input.float(2.0,  "Take Profit RR Ratio", minval=1.0, step=0.5, group=grpSIG)
+slMulti      = input.float(1.5,  "SL ATR Multiplier",   minval=0.5, step=0.5, group=grpSIG)
+colorBuySignal  = input.color(color.new(#00e676, 0),  "BUY Signal Color",  group=grpSIG)
+colorSellSignal = input.color(color.new(#ff1744, 0),  "SELL Signal Color", group=grpSIG)
+showSLTP     = input.bool(true,  "Show SL/TP Lines",              group=grpSIG)
+
+// Dashboard
+grpDB        = "Dashboard"
+showDB       = input.bool(true,  "Show Dashboard",                group=grpDB)
+dbPos        = input.string("Bottom Right", "Position",
+     options=["Top Right","Top Left","Bottom Right","Bottom Left"], group=grpDB)
+
+// =============================================================================
+// PIVOT HELPERS
+// =============================================================================
+
+pivotHigh(len) => ta.pivothigh(high, len, len)
+pivotLow(len)  => ta.pivotlow(low,  len, len)
+
+// =============================================================================
+// TOP LEVEL CALCULATIONS — ta.* functions must be here (not inside if blocks)
+// =============================================================================
+
+highestHigh = ta.highest(high, obLookback)[1]
+lowestLow   = ta.lowest(low,  obLookback)[1]
+pdHighest   = ta.highest(high, pdLen)
+pdLowest    = ta.lowest(low,  pdLen)
+atrValue    = ta.atr(14)
+
+// =============================================================================
+// 1. FAIR VALUE GAPS
+// Bullish FVG : low[1] > high[3]
+// Bearish FVG : high[1] < low[3]
+// =============================================================================
+
+var fvgBoxes    = array.new_box()
+var fvgIsBull   = array.new_bool()
+var fvgTopArr   = array.new_float()
+var fvgBotArr   = array.new_float()
+var int fvgCount = 0
+
+if showFVG and barstate.isconfirmed
+    bullFVG = low[1] > high[3]
+    bearFVG = high[1] < low[3]
+
+    if bullFVG
+        b = box.new(bar_index - 2, high[3], bar_index + 1, low[1],
+             border_color=fvgBordBull, bgcolor=colorBullFVG)
+        array.push(fvgBoxes, b)
+        array.push(fvgIsBull, true)
+        array.push(fvgTopArr, low[1])
+        array.push(fvgBotArr, high[3])
+        fvgCount += 1
+
+    if bearFVG
+        b = box.new(bar_index - 2, high[1], bar_index + 1, low[3],
+             border_color=fvgBordBear, bgcolor=colorBearFVG)
+        array.push(fvgBoxes, b)
+        array.push(fvgIsBull, false)
+        array.push(fvgTopArr, high[1])
+        array.push(fvgBotArr, low[3])
+        fvgCount += 1
+
+// Track active FVG — is price currently inside a bull or bear FVG?
+var bool inBullFVG = false
+var bool inBearFVG = false
+var float activeFVGTop = na
+var float activeFVGBot = na
+
+inBullFVG := false
+inBearFVG := false
+
+if showFVG and array.size(fvgBoxes) > 0
+    for i = array.size(fvgBoxes) - 1 to 0
+        b      = array.get(fvgBoxes, i)
+        isBull = array.get(fvgIsBull, i)
+        bTop   = box.get_top(b)
+        bBot   = box.get_bottom(b)
+        filled = isBull ? low <= bBot : high >= bTop
+
+        // Check if current price is inside this FVG
+        if close >= bBot and close <= bTop
+            if isBull
+                inBullFVG := true
+                activeFVGTop := bTop
+                activeFVGBot := bBot
+            else
+                inBearFVG := true
+                activeFVGTop := bTop
+                activeFVGBot := bBot
+
+        if filled
+            array.remove(fvgBoxes, i)
+            array.remove(fvgIsBull, i)
+            array.remove(fvgTopArr, i)
+            array.remove(fvgBotArr, i)
+            fvgCount := math.max(fvgCount - 1, 0)
+        else if extendFVG
+            box.set_right(b, bar_index + 1)
+
+// =============================================================================
+// 2. ORDER BLOCKS + BREAKER BLOCKS
+// =============================================================================
+
+var obBoxes     = array.new_box()
+var obIsBull    = array.new_bool()
+var obMitigated = array.new_bool()
+var obTopArr    = array.new_float()
+var obBotArr    = array.new_float()
+var int obCount = 0
+
+strongBull = close > highestHigh and close[1] < open[1]
+strongBear = close < lowestLow   and close[1] > open[1]
+
+if showOB and barstate.isconfirmed
+    if strongBull
+        obTop = math.max(open[1], close[1])
+        obBot = math.min(open[1], close[1])
+        b = box.new(bar_index - 1, obTop, bar_index + 1, obBot,
+             border_color=obBorderBull, bgcolor=colorBullOB)
+        array.push(obBoxes, b)
+        array.push(obIsBull, true)
+        array.push(obMitigated, false)
+        array.push(obTopArr, obTop)
+        array.push(obBotArr, obBot)
+        obCount += 1
+
+    if strongBear
+        obTop = math.max(open[1], close[1])
+        obBot = math.min(open[1], close[1])
+        b = box.new(bar_index - 1, obTop, bar_index + 1, obBot,
+             border_color=obBorderBear, bgcolor=colorBearOB)
+        array.push(obBoxes, b)
+        array.push(obIsBull, false)
+        array.push(obMitigated, false)
+        array.push(obTopArr, obTop)
+        array.push(obBotArr, obBot)
+        obCount += 1
+
+// Track active OB — is price currently inside a bull or bear OB?
+var bool inBullOB = false
+var bool inBearOB = false
+var float activeOBTop = na
+var float activeOBBot = na
+
+inBullOB := false
+inBearOB := false
+
+if (showOB or showBB) and array.size(obBoxes) > 0
+    for i = array.size(obBoxes) - 1 to 0
+        b      = array.get(obBoxes, i)
+        isBull = array.get(obIsBull, i)
+        isMit  = array.get(obMitigated, i)
+        bTop   = box.get_top(b)
+        bBot   = box.get_bottom(b)
+        mid    = (bTop + bBot) / 2
+
+        // Check if price is inside unmitigated OB
+        if not isMit and close >= bBot and close <= bTop
+            if isBull
+                inBullOB := true
+                activeOBTop := bTop
+                activeOBBot := bBot
+            else
+                inBearOB := true
+                activeOBTop := bTop
+                activeOBBot := bBot
+
+        mitigated = isBull ? low < mid : high > mid
+
+        if mitigated and not isMit
+            array.set(obMitigated, i, true)
+            obCount := math.max(obCount - 1, 0)
+            if showBB
+                newBg     = isBull ? colorBearBB : colorBullBB
+                newBorder = isBull ? color.new(#ff1744, 20) : color.new(#00e676, 20)
+                box.set_bgcolor(b, newBg)
+                box.set_border_color(b, newBorder)
+            else
+                array.remove(obBoxes, i)
+                array.remove(obIsBull, i)
+                array.remove(obMitigated, i)
+                array.remove(obTopArr, i)
+                array.remove(obBotArr, i)
+        else if not isMit
+            box.set_right(b, bar_index + 1)
+
+// =============================================================================
+// 3. MARKET STRUCTURE — BOS / MSS
+// =============================================================================
+
+var float lastSwingH = na
+var float lastSwingL = na
+var int   lastSHBar  = na
+var int   lastSLBar  = na
+var int   trend      = 0
+var int   mssCount   = 0
+var int   bosCount   = 0
+
+ph = pivotHigh(swingLen)
+pl = pivotLow(swingLen)
+
+if not na(ph)
+    lastSwingH := ph
+    lastSHBar  := bar_index - swingLen
+
+if not na(pl)
+    lastSwingL := pl
+    lastSLBar  := bar_index - swingLen
+
+bosBull = not na(lastSwingH) and close[1] > lastSwingH and close[2] <= lastSwingH
+bosBear = not na(lastSwingL) and close[1] < lastSwingL and close[2] >= lastSwingL
+
+isMSSBull = bosBull and trend == -1
+isMSSBear = bosBear and trend ==  1
+
+if bosBull
+    trend := 1
+    if isMSSBull
+        mssCount += 1
+    else
+        bosCount += 1
+
+if bosBear
+    trend := -1
+    if isMSSBear
+        mssCount += 1
+    else
+        bosCount += 1
+
+if showMSS and barstate.isconfirmed
+    if bosBull
+        lvl = lastSwingH
+        lbl = isMSSBull ? "MSS" : "BOS"
+        clr = isMSSBull ? colorMSS_in : colorBOS
+        if showBOSLine
+            line.new(lastSHBar, lvl, bar_index, lvl,
+                 color=clr, width=1, style=line.style_dashed)
+        label.new(bar_index, lvl, lbl,
+             color=color.new(clr, 85), textcolor=clr,
+             style=label.style_label_down, size=size.small)
+
+    if bosBear
+        lvl = lastSwingL
+        lbl = isMSSBear ? "MSS" : "BOS"
+        clr = isMSSBear ? colorMSS_in : colorBOS
+        if showBOSLine
+            line.new(lastSLBar, lvl, bar_index, lvl,
+                 color=clr, width=1, style=line.style_dashed)
+        label.new(bar_index, lvl, lbl,
+             color=color.new(clr, 85), textcolor=clr,
+             style=label.style_label_up, size=size.small)
+
+plotshape(showMSS and not na(ph) ? ph : na,
+     title="Swing High", style=shape.circle, location=location.abovebar,
+     color=color.new(colorBOS, 40), size=size.tiny)
+
+plotshape(showMSS and not na(pl) ? pl : na,
+     title="Swing Low", style=shape.circle, location=location.belowbar,
+     color=color.new(colorBOS, 40), size=size.tiny)
+
+// =============================================================================
+// 4. LIQUIDITY ZONES — Equal Highs / Equal Lows
+// =============================================================================
+
+var float prevPH    = na
+var int   prevPHBar = na
+var float prevPL    = na
+var int   prevPLBar = na
+var int   liqCount  = 0
+
+// Track recent liquidity sweep (EQH/EQL swept within last 5 bars)
+var bool recentEQHSweep = false
+var bool recentEQLSweep = false
+var int  eqhSweepBar   = 0
+var int  eqlSweepBar   = 0
+
+liqPH = pivotHigh(liqLen)
+liqPL = pivotLow(liqLen)
+
+if showLIQ and barstate.isconfirmed
+    if not na(liqPH)
+        if not na(prevPH)
+            pct = math.abs(liqPH - prevPH) / prevPH * 100
+            if pct <= liqThresh
+                line.new(prevPHBar, prevPH, bar_index - liqLen, liqPH,
+                     color=colorEQH, width=1, style=line.style_dotted)
+                label.new(bar_index - liqLen, liqPH, "EQH",
+                     color=color.new(colorEQH, 80), textcolor=colorEQH,
+                     style=label.style_label_left, size=size.tiny)
+                liqCount += 1
+                // Detect if price swept above this EQH
+                if high >= liqPH
+                    recentEQHSweep := true
+                    eqhSweepBar    := bar_index
+        prevPH    := liqPH
+        prevPHBar := bar_index - liqLen
+
+    if not na(liqPL)
+        if not na(prevPL)
+            pct = math.abs(liqPL - prevPL) / prevPL * 100
+            if pct <= liqThresh
+                line.new(prevPLBar, prevPL, bar_index - liqLen, liqPL,
+                     color=colorEQL, width=1, style=line.style_dotted)
+                label.new(bar_index - liqLen, liqPL, "EQL",
+                     color=color.new(colorEQL, 80), textcolor=colorEQL,
+                     style=label.style_label_left, size=size.tiny)
+                liqCount += 1
+                // Detect if price swept below this EQL
+                if low <= liqPL
+                    recentEQLSweep := true
+                    eqlSweepBar    := bar_index
+        prevPL    := liqPL
+        prevPLBar := bar_index - liqLen
+
+// Reset sweep flags if too old (more than 10 bars ago)
+if bar_index - eqhSweepBar > 10
+    recentEQHSweep := false
+if bar_index - eqlSweepBar > 10
+    recentEQLSweep := false
+
+// =============================================================================
+// 5. PREMIUM & DISCOUNT ZONES
+// =============================================================================
+
+var box   premBox   = na
+var box   discBox   = na
+var line  equilLine = na
+var label premLbl   = na
+var label discLbl   = na
+var label equilLbl  = na
+
+equil = (pdHighest + pdLowest) / 2
+
+// Track if price is in Premium or Discount
+inDiscount = close < equil
+inPremium  = close > equil
+
+if showPD and barstate.islast
+    if not na(premBox)
+        box.delete(premBox)
+    if not na(discBox)
+        box.delete(discBox)
+    if not na(equilLine)
+        line.delete(equilLine)
+    if not na(premLbl)
+        label.delete(premLbl)
+    if not na(discLbl)
+        label.delete(discLbl)
+    if not na(equilLbl)
+        label.delete(equilLbl)
+
+    premBox   := box.new(bar_index - pdLen, pdHighest, bar_index + 5, equil,
+         border_color=color.new(#f44336, 60), bgcolor=colorPremium)
+    discBox   := box.new(bar_index - pdLen, equil, bar_index + 5, pdLowest,
+         border_color=color.new(#4caf50, 60), bgcolor=colorDisc)
+    equilLine := line.new(bar_index - pdLen, equil, bar_index + 5, equil,
+         color=colorEquilib, width=1, style=line.style_dashed)
+    premLbl   := label.new(bar_index + 3, pdHighest, "Premium",
+         color=color.new(#f44336, 80), textcolor=#f44336,
+         style=label.style_label_left, size=size.tiny)
+    discLbl   := label.new(bar_index + 3, pdLowest, "Discount",
+         color=color.new(#4caf50, 80), textcolor=#4caf50,
+         style=label.style_label_left, size=size.tiny)
+    equilLbl  := label.new(bar_index + 3, equil, "EQ 50%",
+         color=color.new(#ffeb3b, 80), textcolor=#ffeb3b,
+         style=label.style_label_left, size=size.tiny)
+
+// =============================================================================
+// 6. KILLZONES
+// =============================================================================
+
+inAsian  = showKZ and not na(time(timeframe.period, "2000-0000", "UTC+0"))
+inLondon = showKZ and not na(time(timeframe.period, "0200-0500", "UTC+0"))
+inNY     = showKZ and not na(time(timeframe.period, "0700-1000", "UTC+0"))
+inKillzone = inLondon or inNY  // Asian excluded from signal logic (low probability)
+
+bgcolor(inAsian  ? colorAsian  : na, title="Asian Session BG")
+bgcolor(inLondon ? colorLondon : na, title="London Open BG")
+bgcolor(inNY     ? colorNY     : na, title="New York Open BG")
+
+// =============================================================================
+// 7. BREAKER BLOCKS (handled in OB section above)
+// =============================================================================
+
+// =============================================================================
+// 8. INDUCEMENT (IDM)
+// =============================================================================
+
+idmPH = pivotHigh(idmLen)
+idmPL = pivotLow(idmLen)
+
+if showIDM and barstate.isconfirmed
+    if not na(idmPH) and not na(lastSwingH)
+        if idmPH < lastSwingH
+            line.new(bar_index - idmLen, idmPH, bar_index, idmPH,
+                 color=colorIDM, width=1, style=line.style_dotted)
+            label.new(bar_index - idmLen, idmPH, "IDM",
+                 color=color.new(colorIDM, 80), textcolor=colorIDM,
+                 style=label.style_label_right, size=size.tiny)
+
+    if not na(idmPL) and not na(lastSwingL)
+        if idmPL > lastSwingL
+            line.new(bar_index - idmLen, idmPL, bar_index, idmPL,
+                 color=colorIDM, width=1, style=line.style_dotted)
+            label.new(bar_index - idmLen, idmPL, "IDM",
+                 color=color.new(colorIDM, 80), textcolor=colorIDM,
+                 style=label.style_label_right, size=size.tiny)
+
+// =============================================================================
+// 9. HTF CONFLUENCE
+// =============================================================================
+
+[htfC, htfO, htfH, htfL] = request.security(syminfo.tickerid, htfTF,
+     [close[1], open[1], high[1], low[1]], lookahead=barmerge.lookahead_off)
+
+htfBullOB  = showHTF and htfC > htfO  and htfC[1] < htfO[1]
+htfBearOB  = showHTF and htfC < htfO  and htfC[1] > htfO[1]
+htfBullFVG = showHTF and htfL > htfH[2]
+htfBearFVG = showHTF and htfH < htfL[2]
+
+// HTF bias for signal confluence
+htfBullBias = htfC > htfO
+htfBearBias = htfC < htfO
+
+if showHTF and barstate.isconfirmed
+    if htfBullOB
+        box.new(bar_index - 3, htfH[1], bar_index + 10, htfL[1],
+             border_color=color.new(colorHTFBull, 40), bgcolor=colorHTFBull)
+        label.new(bar_index, htfH[1], "HTF OB",
+             color=color.new(colorHTFBull, 70), textcolor=colorHTFBull,
+             style=label.style_label_down, size=size.tiny)
+
+    if htfBearOB
+        box.new(bar_index - 3, htfH[1], bar_index + 10, htfL[1],
+             border_color=color.new(colorHTFBear, 40), bgcolor=colorHTFBear)
+        label.new(bar_index, htfL[1], "HTF OB",
+             color=color.new(colorHTFBear, 70), textcolor=colorHTFBear,
+             style=label.style_label_up, size=size.tiny)
+
+    if htfBullFVG
+        box.new(bar_index - 2, htfH[2], bar_index + 10, htfL,
+             border_color=color.new(colorHTFBull, 50),
+             bgcolor=color.new(colorHTFBull, 92))
+        label.new(bar_index, htfH[2], "HTF FVG",
+             color=color.new(colorHTFBull, 70), textcolor=colorHTFBull,
+             style=label.style_label_down, size=size.tiny)
+
+    if htfBearFVG
+        box.new(bar_index - 2, htfH, bar_index + 10, htfL[2],
+             border_color=color.new(colorHTFBear, 50),
+             bgcolor=color.new(colorHTFBear, 92))
+        label.new(bar_index, htfL[2], "HTF FVG",
+             color=color.new(colorHTFBear, 70), textcolor=colorHTFBear,
+             style=label.style_label_up, size=size.tiny)
+
+// =============================================================================
+// 10. ENTRY SIGNAL ENGINE
+// =============================================================================
+// BUY conditions (each = 1 point):
+//   C1 : Trend is Bullish (trend == 1)
+//   C2 : Price in Discount zone
+//   C3 : Killzone active (London or NY)
+//   C4 : Price inside Bullish OB or Bullish FVG
+//   C5 : Recent EQL sweep (stop hunt complete)
+//   C6 : HTF Bullish bias (bonus confluence)
+//
+// SELL conditions (mirror of above):
+//   C1 : Trend is Bearish (trend == -1)
+//   C2 : Price in Premium zone
+//   C3 : Killzone active
+//   C4 : Price inside Bearish OB or Bearish FVG
+//   C5 : Recent EQH sweep
+//   C6 : HTF Bearish bias
+//
+// Signal fires when conditionsMet >= minConditions (user input)
+// =============================================================================
+
+// BUY condition checks
+buyC1 = trend == 1
+buyC2 = inDiscount
+buyC3 = inKillzone
+buyC4 = inBullOB or inBullFVG
+buyC5 = recentEQLSweep
+buyC6 = htfBullBias
+
+// SELL condition checks
+selC1 = trend == -1
+selC2 = inPremium
+selC3 = inKillzone
+selC4 = inBearOB or inBearFVG
+selC5 = recentEQHSweep
+selC6 = htfBearBias
+
+// Count how many conditions are met
+buyScore = (buyC1 ? 1 : 0) + (buyC2 ? 1 : 0) + (buyC3 ? 1 : 0) +
+           (buyC4 ? 1 : 0) + (buyC5 ? 1 : 0) + (buyC6 ? 1 : 0)
+
+selScore = (selC1 ? 1 : 0) + (selC2 ? 1 : 0) + (selC3 ? 1 : 0) +
+           (selC4 ? 1 : 0) + (selC5 ? 1 : 0) + (selC6 ? 1 : 0)
+
+buySignal = showSignals and barstate.isconfirmed and buyScore >= minConditions
+selSignal = showSignals and barstate.isconfirmed and selScore >= minConditions
+
+// Prevent duplicate signals — only fire once per zone
+var bool lastWasBuy  = false
+var bool lastWasSell = false
+
+buySignalFinal = buySignal and not lastWasBuy
+selSignalFinal = selSignal and not lastWasSell
+
+if buySignalFinal
+    lastWasBuy  := true
+    lastWasSell := false
+
+if selSignalFinal
+    lastWasSell := true
+    lastWasBuy  := false
+
+if not buySignal and not selSignal
+    lastWasBuy  := false
+    lastWasSell := false
+
+// =============================================================================
+// 11. SIGNAL LABELS + SL/TP LINES
+// =============================================================================
+
+// Build condition string for label tooltip
+buildBuyDetails(score) =>
+    c1 = buyC1 ? "[OK] Trend: Bullish" : "[--] Trend: Not Bullish"
+    c2 = buyC2 ? "[OK] Zone: Discount" : "[--] Zone: Not Discount"
+    c3 = buyC3 ? "[OK] Session: Killzone" : "[--] Session: Off Hours"
+    c4 = buyC4 ? "[OK] Zone: In Bull OB/FVG" : "[--] Zone: No OB/FVG"
+    c5 = buyC5 ? "[OK] Liquidity: EQL Swept" : "[--] Liquidity: No Sweep"
+    c6 = buyC6 ? "[OK] HTF: Bull Bias" : "[--] HTF: No Bias"
+    "BUY SETUP | Score: " + str.tostring(score) + "/6\n" +
+         c1 + "\n" + c2 + "\n" + c3 + "\n" + c4 + "\n" + c5 + "\n" + c6
+
+buildSelDetails(score) =>
+    c1 = selC1 ? "[OK] Trend: Bearish" : "[--] Trend: Not Bearish"
+    c2 = selC2 ? "[OK] Zone: Premium" : "[--] Zone: Not Premium"
+    c3 = selC3 ? "[OK] Session: Killzone" : "[--] Session: Off Hours"
+    c4 = selC4 ? "[OK] Zone: In Bear OB/FVG" : "[--] Zone: No OB/FVG"
+    c5 = selC5 ? "[OK] Liquidity: EQH Swept" : "[--] Liquidity: No Sweep"
+    c6 = selC6 ? "[OK] HTF: Bear Bias" : "[--] HTF: No Bias"
+    "SELL SETUP | Score: " + str.tostring(score) + "/6\n" +
+         c1 + "\n" + c2 + "\n" + c3 + "\n" + c4 + "\n" + c5 + "\n" + c6
+
+if buySignalFinal
+    slPrice = low  - atrValue * slMulti
+    tpPrice = close + (close - slPrice) * rrRatio
+
+    // Main signal label
+    label.new(bar_index, low,
+         "BUY " + str.tostring(buyScore) + "/6",
+         tooltip=buildBuyDetails(buyScore),
+         color=color.new(colorBuySignal, 10),
+         textcolor=color.white,
+         style=label.style_label_up,
+         size=size.normal)
+
+    // SL line
+    if showSLTP
+        line.new(bar_index, slPrice, bar_index + 10, slPrice,
+             color=color.new(#f44336, 30), width=1, style=line.style_dashed)
+        label.new(bar_index + 10, slPrice, "SL " + str.tostring(math.round(slPrice, 2)),
+             color=color.new(#f44336, 70), textcolor=#f44336,
+             style=label.style_label_left, size=size.tiny)
+
+        // TP line
+        line.new(bar_index, tpPrice, bar_index + 10, tpPrice,
+             color=color.new(#4caf50, 30), width=1, style=line.style_dashed)
+        label.new(bar_index + 10, tpPrice, "TP " + str.tostring(math.round(tpPrice, 2)),
+             color=color.new(#4caf50, 70), textcolor=#4caf50,
+             style=label.style_label_left, size=size.tiny)
+
+if selSignalFinal
+    slPrice = high + atrValue * slMulti
+    tpPrice = close - (slPrice - close) * rrRatio
+
+    label.new(bar_index, high,
+         "SELL " + str.tostring(selScore) + "/6",
+         tooltip=buildSelDetails(selScore),
+         color=color.new(colorSellSignal, 10),
+         textcolor=color.white,
+         style=label.style_label_down,
+         size=size.normal)
+
+    if showSLTP
+        line.new(bar_index, slPrice, bar_index + 10, slPrice,
+             color=color.new(#f44336, 30), width=1, style=line.style_dashed)
+        label.new(bar_index + 10, slPrice, "SL " + str.tostring(math.round(slPrice, 2)),
+             color=color.new(#f44336, 70), textcolor=#f44336,
+             style=label.style_label_left, size=size.tiny)
+
+        line.new(bar_index, tpPrice, bar_index + 10, tpPrice,
+             color=color.new(#4caf50, 30), width=1, style=line.style_dashed)
+        label.new(bar_index + 10, tpPrice, "TP " + str.tostring(math.round(tpPrice, 2)),
+             color=color.new(#4caf50, 70), textcolor=#4caf50,
+             style=label.style_label_left, size=size.tiny)
+
+// =============================================================================
+// 12. WIN RATE TRACKER
+// =============================================================================
+// After each signal, we track whether price hit TP or SL first.
+// Uses confirmed bar closes — no repainting.
+// State machine: IDLE -> LONG/SHORT pending -> WIN or LOSS
+// =============================================================================
+
+var int   totalSignals = 0
+var int   totalWins    = 0
+var int   totalLosses  = 0
+var int   tradeState   = 0    // 0=idle, 1=long pending, -1=short pending
+var float pendingSL    = na
+var float pendingTP    = na
+var int   signalBar    = 0
+
+var int   currentWinStreak  = 0
+var int   currentLossStreak = 0
+var int   maxWinStreak      = 0
+var int   maxLossStreak     = 0
+
+// =============================================================================
+// UNLIMITED R:R TRAILING SIMULATOR
+// Logic: When price hits 1R → SL moves to BE (0R locked)
+//        When price hits 2R → SL moves to +1R locked
+//        When price hits 3R → SL moves to +2R locked ... etc.
+// Tracks total R earned (fixed TP vs trailing) for comparison.
+// =============================================================================
+var float tradeEntryPrice  = na   // entry price of current trade
+var float tradeRUnit       = na   // 1R in price units (= entry - SL)
+var int   tradeDir         = 0    // 1=long, -1=short
+var int   trailingLockedR  = 0    // how many R are currently locked in
+var float totalRFixed      = 0.0  // cumulative R from fixed TP trades
+var float totalRTrailing   = 0.0  // cumulative R from trailing method
+var float bestTradeR       = 0.0  // best single trade R achieved
+var float avgRTrailing     = 0.0  // running average
+var int   trailWins        = 0    // trailing method: trades closed in profit
+var int   trailLosses      = 0    // trailing method: trades closed at loss/BE
+
+// Open new trade tracking on signal
+if buySignalFinal and tradeState == 0
+    totalSignals   += 1
+    tradeState     := 1
+    pendingSL      := low  - atrValue * slMulti
+    pendingTP      := close + (close - pendingSL) * rrRatio
+    signalBar      := bar_index
+    // Trailing simulator init
+    tradeEntryPrice := close
+    tradeRUnit      := close - pendingSL
+    tradeDir        := 1
+    trailingLockedR := 0
+
+if selSignalFinal and tradeState == 0
+    totalSignals   += 1
+    tradeState     := -1
+    pendingSL      := high + atrValue * slMulti
+    pendingTP      := close - (pendingSL - close) * rrRatio
+    signalBar      := bar_index
+    // Trailing simulator init
+    tradeEntryPrice := close
+    tradeRUnit      := pendingSL - close
+    tradeDir        := -1
+    trailingLockedR := 0
+
+// ── TRAILING R:R SIMULATOR (runs alongside fixed tracker) ──────────────────
+if tradeDir != 0 and not na(tradeEntryPrice) and not na(tradeRUnit) and tradeRUnit > 0
+    // Check how many R levels price has reached this bar
+    if tradeDir == 1
+        currentPnlR = (high - tradeEntryPrice) / tradeRUnit
+        newLockedR  = math.floor(currentPnlR)   // lock one R behind current
+        if newLockedR > trailingLockedR
+            trailingLockedR := newLockedR
+    else
+        currentPnlR = (tradeEntryPrice - low) / tradeRUnit
+        newLockedR  = math.floor(currentPnlR)
+        if newLockedR > trailingLockedR
+            trailingLockedR := newLockedR
+
+// ── FIXED TP / SL OUTCOME TRACKER (LONG) ───────────────────────────────────
+if tradeState == 1 and not na(pendingTP) and not na(pendingSL)
+    if high >= pendingTP
+        totalWins        += 1
+        currentWinStreak += 1
+        currentLossStreak := 0
+        maxWinStreak     := math.max(maxWinStreak, currentWinStreak)
+        tradeState       := 0
+        // Fixed R contribution
+        totalRFixed      += rrRatio
+        // Trailing R contribution (locked R + final leg to TP = rrRatio)
+        finalTrailR       = math.max(float(trailingLockedR), rrRatio)
+        totalRTrailing   += finalTrailR
+        bestTradeR       := math.max(bestTradeR, finalTrailR)
+        trailWins        += 1
+        tradeDir         := 0
+        label.new(bar_index, high, "W",
+             color=color.new(#4caf50, 20), textcolor=color.white,
+             style=label.style_circle, size=size.tiny)
+    else if low <= pendingSL
+        totalLosses      += 1
+        currentLossStreak += 1
+        currentWinStreak  := 0
+        maxLossStreak    := math.max(maxLossStreak, currentLossStreak)
+        tradeState       := 0
+        // Fixed: -1R   Trailing: locked R (could be 0 if BE, or positive)
+        totalRFixed      -= 1.0
+        trailingResult    = trailingLockedR > 0 ? float(trailingLockedR - 1) : -1.0
+        totalRTrailing   += trailingResult
+        if trailingResult >= 0.0
+            trailWins    += 1
+        else
+            trailLosses  += 1
+        tradeDir         := 0
+        label.new(bar_index, low, "L",
+             color=color.new(#f44336, 20), textcolor=color.white,
+             style=label.style_circle, size=size.tiny)
+
+// ── FIXED TP / SL OUTCOME TRACKER (SHORT) ──────────────────────────────────
+if tradeState == -1 and not na(pendingTP) and not na(pendingSL)
+    if low <= pendingTP
+        totalWins        += 1
+        currentWinStreak += 1
+        currentLossStreak := 0
+        maxWinStreak     := math.max(maxWinStreak, currentWinStreak)
+        tradeState       := 0
+        totalRFixed      += rrRatio
+        finalTrailR       = math.max(float(trailingLockedR), rrRatio)
+        totalRTrailing   += finalTrailR
+        bestTradeR       := math.max(bestTradeR, finalTrailR)
+        trailWins        += 1
+        tradeDir         := 0
+        label.new(bar_index, low, "W",
+             color=color.new(#4caf50, 20), textcolor=color.white,
+             style=label.style_circle, size=size.tiny)
+    else if high >= pendingSL
+        totalLosses      += 1
+        currentLossStreak += 1
+        currentWinStreak  := 0
+        maxLossStreak    := math.max(maxLossStreak, currentLossStreak)
+        tradeState       := 0
+        totalRFixed      -= 1.0
+        trailingResult    = trailingLockedR > 0 ? float(trailingLockedR - 1) : -1.0
+        totalRTrailing   += trailingResult
+        if trailingResult >= 0.0
+            trailWins    += 1
+        else
+            trailLosses  += 1
+        tradeDir         := 0
+        label.new(bar_index, high, "L",
+             color=color.new(#f44336, 20), textcolor=color.white,
+             style=label.style_circle, size=size.tiny)
+
+// Calculate win rate
+winRate = totalSignals > 0 ? (totalWins / totalSignals) * 100 : 0.0
+winRateStr = str.tostring(math.round(winRate, 1)) + "%"
+
+// Average R for trailing method
+avgRTrailing := totalSignals > 0 ? totalRTrailing / totalSignals : 0.0
+trailWinRate  = (trailWins + trailLosses) > 0 ? (trailWins / (trailWins + trailLosses)) * 100 : 0.0
+
+// =============================================================================
+// 13. DASHBOARD — Updated with Entry Signal + Win Rate
+// =============================================================================
+
+posMap(p) =>
+    if p == "Top Right"
+        position.top_right
+    else if p == "Top Left"
+        position.top_left
+    else if p == "Bottom Left"
+        position.bottom_left
+    else
+        position.bottom_right
+
+trendStr = trend ==  1 ? "Bullish" : trend == -1 ? "Bearish" : "Neutral"
+trendClr = trend ==  1 ? #4caf50   : trend == -1 ? #f44336   : #9e9e9e
+sessStr  = inNY ? "NY Open" : inLondon ? "London" : inAsian ? "Asian" : "Off Hours"
+
+// Current signal score display
+buyScoreStr = "BUY: " + str.tostring(buyScore) + "/6"
+selScoreStr = "SELL: " + str.tostring(selScore) + "/6"
+activeSig   = tradeState ==  1 ? "LONG Active" :
+              tradeState == -1 ? "SHORT Active" : "No Trade"
+activeSigClr = tradeState ==  1 ? #4caf50 :
+               tradeState == -1 ? #f44336 : #9e9e9e
+
+winRateClr = winRate >= 60 ? #4caf50 : winRate >= 45 ? #ffeb3b : #f44336
+
+var table dash = na
+
+if showDB and barstate.islast
+    if not na(dash)
+        table.delete(dash)
+
+    dash := table.new(posMap(dbPos), 2, 24,
+         border_color=color.new(#ffffff, 70), border_width=1,
+         bgcolor=color.new(#131722, 15),
+         frame_color=color.new(#ffffff, 50), frame_width=1)
+
+    // Header
+    table.cell(dash, 0, 0, "ICT Suite v3",
+         text_color=#ffffff, text_size=size.small,
+         bgcolor=color.new(#1a1a2e, 20), text_halign=text.align_left)
+    table.cell(dash, 1, 0, syminfo.ticker + " / " + timeframe.period,
+         text_color=#aaaaaa, text_size=size.small,
+         bgcolor=color.new(#1a1a2e, 20), text_halign=text.align_right)
+
+    // Signal section header
+    table.cell(dash, 0, 1, "--- SIGNALS ---",
+         text_color=#888888, text_size=size.tiny,
+         bgcolor=color.new(#0d0d1a, 30), text_halign=text.align_left)
+    table.cell(dash, 1, 1, "",
+         bgcolor=color.new(#0d0d1a, 30))
+
+    table.cell(dash, 0, 2, "BUY Score",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 2, buyScoreStr,
+         text_color=buyScore >= minConditions ? #00e676 : #4caf50,
+         text_size=size.small, text_halign=text.align_right)
+
+    table.cell(dash, 0, 3, "SELL Score",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 3, selScoreStr,
+         text_color=selScore >= minConditions ? #ff5252 : #f44336,
+         text_size=size.small, text_halign=text.align_right)
+
+    table.cell(dash, 0, 4, "Active Trade",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 4, activeSig,
+         text_color=activeSigClr, text_size=size.small, text_halign=text.align_right)
+
+    // Win Rate section header
+    table.cell(dash, 0, 5, "--- WIN RATE ---",
+         text_color=#888888, text_size=size.tiny,
+         bgcolor=color.new(#0d0d1a, 30), text_halign=text.align_left)
+    table.cell(dash, 1, 5, "",
+         bgcolor=color.new(#0d0d1a, 30))
+
+    table.cell(dash, 0, 6, "Total Signals",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 6, str.tostring(totalSignals),
+         text_color=#ffffff, text_size=size.small, text_halign=text.align_right)
+
+    table.cell(dash, 0, 7, "Wins",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 7, str.tostring(totalWins),
+         text_color=#4caf50, text_size=size.small, text_halign=text.align_right)
+
+    table.cell(dash, 0, 8, "Losses",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 8, str.tostring(totalLosses),
+         text_color=#f44336, text_size=size.small, text_halign=text.align_right)
+
+    table.cell(dash, 0, 9, "Win Rate",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 9, winRateStr,
+         text_color=winRateClr, text_size=size.normal, text_halign=text.align_right)
+
+    table.cell(dash, 0, 10, "Win Streak (Max)",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 10, str.tostring(currentWinStreak) + " (" + str.tostring(maxWinStreak) + ")",
+         text_color=#4caf50, text_size=size.small, text_halign=text.align_right)
+
+    table.cell(dash, 0, 11, "Loss Streak (Max)",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 11, str.tostring(currentLossStreak) + " (" + str.tostring(maxLossStreak) + ")",
+         text_color=#f44336, text_size=size.small, text_halign=text.align_right)
+
+    // ── R:R REPORT SECTION ────────────────────────────────────────────────────
+    table.cell(dash, 0, 12, "--- R:R REPORT ---",
+         text_color=#ffeb3b, text_size=size.tiny,
+         bgcolor=color.new(#1a1200, 30), text_halign=text.align_left)
+    table.cell(dash, 1, 12, "Fixed vs Trailing",
+         text_color=#ffeb3b, text_size=size.tiny,
+         bgcolor=color.new(#1a1200, 30), text_halign=text.align_right)
+
+    rFixedStr    = (totalRFixed >= 0 ? "+" : "") + str.tostring(math.round(totalRFixed, 2)) + "R"
+    rFixedClr    = totalRFixed >= 0 ? #4caf50 : #f44336
+    table.cell(dash, 0, 13, "Fixed TP Total R",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 13, rFixedStr,
+         text_color=rFixedClr, text_size=size.small, text_halign=text.align_right)
+
+    rTrailStr    = (totalRTrailing >= 0 ? "+" : "") + str.tostring(math.round(totalRTrailing, 2)) + "R"
+    rTrailClr    = totalRTrailing >= 0 ? #00e676 : #f44336
+    table.cell(dash, 0, 14, "Trailing Total R",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 14, rTrailStr,
+         text_color=rTrailClr, text_size=size.small, text_halign=text.align_right)
+
+    rDiff     = totalRTrailing - totalRFixed
+    rDiffStr  = (rDiff >= 0 ? "+" : "") + str.tostring(math.round(rDiff, 2)) + "R"
+    rDiffClr  = rDiff >= 0 ? #00bcd4 : #ff9800
+    table.cell(dash, 0, 15, "Trailing Advantage",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 15, rDiffStr,
+         text_color=rDiffClr, text_size=size.small, text_halign=text.align_right)
+
+    avgRStr = str.tostring(math.round(avgRTrailing, 2)) + "R / trade"
+    table.cell(dash, 0, 16, "Avg R (Trailing)",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 16, avgRStr,
+         text_color=#ffffff, text_size=size.small, text_halign=text.align_right)
+
+    bestRStr = str.tostring(math.round(bestTradeR, 1)) + "R"
+    table.cell(dash, 0, 17, "Best Trade R",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 17, bestRStr,
+         text_color=#ffeb3b, text_size=size.small, text_halign=text.align_right)
+
+    trailWRStr = str.tostring(math.round(trailWinRate, 1)) + "%"
+    trailWRClr = trailWinRate >= 60 ? #4caf50 : trailWinRate >= 45 ? #ffeb3b : #f44336
+    table.cell(dash, 0, 18, "Trail Win Rate",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 18, trailWRStr,
+         text_color=trailWRClr, text_size=size.small, text_halign=text.align_right)
+
+    // Live trade: how many R locked right now
+    liveRStr = tradeDir != 0 ? str.tostring(trailingLockedR) + "R locked" : "—"
+    liveRClr = tradeDir != 0 ? #00e676 : #666666
+    table.cell(dash, 0, 19, "Live Locked R",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 19, liveRStr,
+         text_color=liveRClr, text_size=size.small, text_halign=text.align_right)
+
+    // ── MARKET SECTION ────────────────────────────────────────────────────────
+    table.cell(dash, 0, 20, "--- MARKET ---",
+         text_color=#888888, text_size=size.tiny,
+         bgcolor=color.new(#0d0d1a, 30), text_halign=text.align_left)
+    table.cell(dash, 1, 20, "",
+         bgcolor=color.new(#0d0d1a, 30))
+
+    table.cell(dash, 0, 21, "Structure",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 21, trendStr,
+         text_color=trendClr, text_size=size.small, text_halign=text.align_right)
+
+    table.cell(dash, 0, 22, "Session",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 22, sessStr,
+         text_color=#ffffff, text_size=size.tiny, text_halign=text.align_right)
+
+    table.cell(dash, 0, 23, "Active OBs / FVGs",
+         text_color=#aaaaaa, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(dash, 1, 23, str.tostring(obCount) + " / " + str.tostring(fvgCount),
+         text_color=#00bcd4, text_size=size.small, text_halign=text.align_right)
+
+// =============================================================================
+// END OF SCRIPT - ICT Concepts v3.0
+// =============================================================================
+
