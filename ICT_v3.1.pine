@@ -450,12 +450,18 @@ inDiscount = close < equil
 inPremium  = close > equil
 
 if showPD and barstate.islast
-    if not na(premBox)   box.delete(premBox)
-    if not na(discBox)   box.delete(discBox)
-    if not na(equilLine) line.delete(equilLine)
-    if not na(premLbl)   label.delete(premLbl)
-    if not na(discLbl)   label.delete(discLbl)
-    if not na(equilLbl)  label.delete(equilLbl)
+    if not na(premBox)
+        box.delete(premBox)
+    if not na(discBox)
+        box.delete(discBox)
+    if not na(equilLine)
+        line.delete(equilLine)
+    if not na(premLbl)
+        label.delete(premLbl)
+    if not na(discLbl)
+        label.delete(discLbl)
+    if not na(equilLbl)
+        label.delete(equilLbl)
 
     premBox   := box.new(bar_index - pdLen, pdHighest, bar_index + 5, equil,
          border_color=color.new(#f44336, 60), bgcolor=colorPremium)
@@ -904,11 +910,8 @@ winRateStr   = str.tostring(math.round(winRate, 1)) + "%"
 avgRTrailing := totalSignals > 0 ? totalRTrailing / totalSignals : 0.0
 trailWinRate  = (trailWins + trailLosses) > 0 ? (trailWins / (trailWins + trailLosses)) * 100 : 0.0
 
-posMap(p) =>
-    if p == "Top Right"      position.top_right
-    else if p == "Top Left"  position.top_left
-    else if p == "Bottom Left" position.bottom_left
-    else position.bottom_right
+// position.* constants cannot be returned from user-defined functions in Pine Script v5.
+// Use inline ternary directly in table.new() instead.
 
 trendStr = trend ==  1 ? "Bullish ↑" : trend == -1 ? "Bearish ↓" : "Neutral"
 trendClr = trend ==  1 ? #4caf50     : trend == -1 ? #f44336     : #9e9e9e
@@ -924,11 +927,17 @@ beStr        = tradeState != 0 and beActivated ? " [BE]" : ""
 
 var table dash = na
 
+dashPos = dbPos == "Top Right"    ? position.top_right  :
+           dbPos == "Top Left"    ? position.top_left   :
+           dbPos == "Bottom Left" ? position.bottom_left :
+           position.bottom_right
+
 if showDB and barstate.islast
     if not na(dash)
         table.delete(dash)
 
-    dash := table.new(posMap(dbPos), 2, 26,
+
+    dash := table.new(dashPos, 2, 26,
          border_color=color.new(#ffffff, 70), border_width=1,
          bgcolor=color.new(#0d0d14, 10),
          frame_color=color.new(#ffffff, 50), frame_width=1)
