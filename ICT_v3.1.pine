@@ -87,6 +87,7 @@ colorHTFBear = input.color(color.new(#ff5722, 88), "HTF Bear",  group=grpHTF)
 // ── Entry Signal Settings (v3.1 REFACTORED) ───────────────────────────────────
 grpSIG       = "⑩ Entry Signals [v3.1]"
 showSignals  = input.bool(true, "Show Entry Signals",           group=grpSIG)
+reqKillzone  = input.bool(true, "Require Killzone for Signals", group=grpSIG)
 confFilter   = input.string("≥ 1/3 (Standard)", "Min Confluence Needed", options=["All (0/3 - Core Only)", "≥ 1/3 (Standard)", "≥ 2/3 (High Prob)", "3/3 (Strict)"], group=grpSIG)
 slMulti      = input.float(1.5, "SL ATR Multiplier", minval=0.5, step=0.25, group=grpSIG)
 minRR        = input.float(1.5, "Minimum R:R (Dynamic TP floor)", minval=1.0, step=0.25, group=grpSIG)
@@ -591,7 +592,7 @@ reqConf = confFilter == "All (0/3 - Core Only)" ? 0 : confFilter == "≥ 2/3 (Hi
 
 // ── BUY Core ──────────────────────────────────────────────────────────────────
 buyCore_Zone      = inBullOB or inBullFVG       // price in bullish demand zone
-buyCore_Session   = inKillzone                   // killzone active
+buyCore_Session   = not reqKillzone or inKillzone // killzone active
 buyCore_Volatile  = isVolatile                   // market moving
 
 buyCore = buyCore_Zone and buyCore_Session and buyCore_Volatile
@@ -606,7 +607,7 @@ buyConfluence      = buyConfluenceCount >= reqConf
 
 // ── SELL Core ─────────────────────────────────────────────────────────────────
 selCore_Zone      = inBearOB or inBearFVG
-selCore_Session   = inKillzone
+selCore_Session   = not reqKillzone or inKillzone
 selCore_Volatile  = isVolatile
 
 selCore = selCore_Zone and selCore_Session and selCore_Volatile
@@ -639,6 +640,17 @@ if selSignalFinal
 if not buySignalRaw and not selSignalRaw
     lastWasBuy  := false
     lastWasSell := false
+
+// ── Real-time Pending Signal Indicator ─────────────────────────────────────────
+var label lblPending = na
+if barstate.isrealtime
+    if not na(lblPending)
+        label.delete(lblPending)
+    
+    if showSignals and buyCore and buyConfluence and not lastWasBuy
+        lblPending := label.new(bar_index, low, "⏳ BUY Ready", color=color.new(#ffeb3b, 0), textcolor=color.black, style=label.style_label_up, size=size.small)
+    else if showSignals and selCore and selConfluence and not lastWasSell
+        lblPending := label.new(bar_index, high, "⏳ SELL Ready", color=color.new(#ffeb3b, 0), textcolor=color.black, style=label.style_label_down, size=size.small)
 
 // =============================================================================
 // ─── 11. DYNAMIC LIQUIDITY TP CALCULATION ────────────────────────────────────
@@ -674,7 +686,7 @@ calcSellTP(entryPx, slPx) =>
 buildBuyTip(cX, cY, cZ) =>
     "BUY [Core+Confluence]\n" +
      "✦ Zone: " + (buyCore_Zone ? "✅ Bull OB/FVG" : "❌") + "\n" +
-     "✦ Session: " + (inKillzone ? "✅ Killzone" : "❌") + "\n" +
+     "✦ Session: " + (inKillzone ? "✅ Killzone" : (not reqKillzone ? "✅ Ignored" : "❌")) + "\n" +
      "✦ Volatility: " + (isVolatile ? "✅ Active" : "❌ Choppy") + "\n" +
      "── Confluence ──\n" +
      "X HTF Bias: " + (cX ? "✅ Bullish" : "—") + "\n" +
@@ -684,7 +696,7 @@ buildBuyTip(cX, cY, cZ) =>
 buildSellTip(cX, cY, cZ) =>
     "SELL [Core+Confluence]\n" +
      "✦ Zone: " + (selCore_Zone ? "✅ Bear OB/FVG" : "❌") + "\n" +
-     "✦ Session: " + (inKillzone ? "✅ Killzone" : "❌") + "\n" +
+     "✦ Session: " + (inKillzone ? "✅ Killzone" : (not reqKillzone ? "✅ Ignored" : "❌")) + "\n" +
      "✦ Volatility: " + (isVolatile ? "✅ Active" : "❌ Choppy") + "\n" +
      "── Confluence ──\n" +
      "X HTF Bias: " + (cX ? "✅ Bearish" : "—") + "\n" +
