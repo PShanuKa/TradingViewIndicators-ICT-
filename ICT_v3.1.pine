@@ -87,6 +87,7 @@ colorHTFBear = input.color(color.new(#ff5722, 88), "HTF Bear",  group=grpHTF)
 // ── Entry Signal Settings (v3.1 REFACTORED) ───────────────────────────────────
 grpSIG       = "⑩ Entry Signals [v3.1]"
 showSignals  = input.bool(true, "Show Entry Signals",           group=grpSIG)
+confFilter   = input.string("≥ 1/3 (Standard)", "Min Confluence Needed", options=["All (0/3 - Core Only)", "≥ 1/3 (Standard)", "≥ 2/3 (High Prob)", "3/3 (Strict)"], group=grpSIG)
 slMulti      = input.float(1.5, "SL ATR Multiplier", minval=0.5, step=0.25, group=grpSIG)
 minRR        = input.float(1.5, "Minimum R:R (Dynamic TP floor)", minval=1.0, step=0.25, group=grpSIG)
 tpLookback   = input.int(30,   "Dynamic TP Lookback (bars)", minval=10, maxval=100, group=grpSIG)
@@ -179,7 +180,7 @@ if array.size(fvgBoxes) > 0
         bBot   = box.get_bottom(b)
         filled = isBull ? low <= bBot : high >= bTop
 
-        if close >= bBot and close <= bTop
+        if low <= bTop and high >= bBot
             if isBull
                 inBullFVG    := true
                 activeFVGTop := bTop
@@ -254,7 +255,7 @@ if (showOB or showBB) and array.size(obBoxes) > 0
         bBot   = box.get_bottom(b)
         mid    = (bTop + bBot) / 2
 
-        if not isMit and close >= bBot and close <= bTop
+        if not isMit and low <= bTop and high >= bBot
             if isBull
                 inBullOB   := true
                 activeOBTop := bTop
@@ -483,14 +484,14 @@ if showPD and barstate.islast
 // ─── 6. KILLZONES ────────────────────────────────────────────────────────────
 // =============================================================================
 
-inAsian    = showKZ and not na(time(timeframe.period, "2000-0000", "UTC+0"))
-inLondon   = showKZ and not na(time(timeframe.period, "0200-0500", "UTC+0"))
-inNY       = showKZ and not na(time(timeframe.period, "0700-1000", "UTC+0"))
+inAsian    = not na(time(timeframe.period, "2000-0000", "UTC+0"))
+inLondon   = not na(time(timeframe.period, "0200-0500", "UTC+0"))
+inNY       = not na(time(timeframe.period, "0700-1000", "UTC+0"))
 inKillzone = inLondon or inNY
 
-bgcolor(inAsian  ? colorAsian  : na, title="Asian Session BG")
-bgcolor(inLondon ? colorLondon : na, title="London Open BG")
-bgcolor(inNY     ? colorNY     : na, title="New York Open BG")
+bgcolor(showKZ and inAsian  ? colorAsian  : na, title="Asian Session BG")
+bgcolor(showKZ and inLondon ? colorLondon : na, title="London Open BG")
+bgcolor(showKZ and inNY     ? colorNY     : na, title="New York Open BG")
 
 // =============================================================================
 // ─── 7. BREAKER BLOCKS (Managed within OB section) ───────────────────────────
@@ -580,11 +581,13 @@ if showHTF and barstate.isconfirmed
 //    Y) Recent Liquidity Sweep in trade direction (EQL swept → BUY, EQH swept → SELL)
 //    Z) Recent Market Structure Shift (MSS) in trade direction
 //
-//  Signal fires when: CORE satisfied AND CONFLUENCE ≥ 1
+//  Signal fires when: CORE satisfied AND CONFLUENCE >= reqConf (from settings)
 //  No more rigid 6-point system — this guarantees trades fire while still
 //  requiring meaningful confluence.
 //
 // =============================================================================
+
+reqConf = confFilter == "All (0/3 - Core Only)" ? 0 : confFilter == "≥ 2/3 (High Prob)" ? 2 : confFilter == "3/3 (Strict)" ? 3 : 1
 
 // ── BUY Core ──────────────────────────────────────────────────────────────────
 buyCore_Zone      = inBullOB or inBullFVG       // price in bullish demand zone
@@ -599,7 +602,7 @@ buyCY = recentEQLSweep             // Y: sell-side liquidity swept → buy rever
 buyCZ = recentMSSBull              // Z: MSS bullish (trend shift up)
 
 buyConfluenceCount = (buyCX ? 1 : 0) + (buyCY ? 1 : 0) + (buyCZ ? 1 : 0)
-buyConfluence      = buyConfluenceCount >= 1
+buyConfluence      = buyConfluenceCount >= reqConf
 
 // ── SELL Core ─────────────────────────────────────────────────────────────────
 selCore_Zone      = inBearOB or inBearFVG
@@ -614,7 +617,7 @@ selCY = recentEQHSweep
 selCZ = recentMSSBear
 
 selConfluenceCount = (selCX ? 1 : 0) + (selCY ? 1 : 0) + (selCZ ? 1 : 0)
-selConfluence      = selConfluenceCount >= 1
+selConfluence      = selConfluenceCount >= reqConf
 
 // ── Final signal conditions ────────────────────────────────────────────────────
 buySignalRaw = showSignals and barstate.isconfirmed and buyCore and buyConfluence
